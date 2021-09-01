@@ -38,16 +38,17 @@ var (
 	}
 
 	errorInvalidOptions = fmt.Errorf("invalid options")
-	errorMissingOptions = fmt.Errorf("missing options")
 )
 
 func init() {
 	rootCmd.AddCommand(serverCmd)
 
-	serverCmd.Flags().String("listen", ":8000", "listen address")
-	serverCmd.Flags().String("url", "http://localhost:3000", "grafana base url")
+	// command line flags
+	serverCmd.Flags().String("listen", ":8080", "listen address")
+	serverCmd.Flags().String("url", "http://grafana:3000", "grafana base url")
 	serverCmd.Flags().String("cache", "", "cache directory")
 
+	// bind flags to viper
 	viper.BindPFlag("listen", serverCmd.Flags().Lookup("listen"))
 	viper.BindPFlag("url", serverCmd.Flags().Lookup("url"))
 	viper.BindPFlag("cache", serverCmd.Flags().Lookup("cache"))
@@ -132,7 +133,7 @@ func graphHandler(w http.ResponseWriter, r *http.Request) {
 	// return cached data if still fresh
 	if viper.IsSet("cache") {
 		h := sha256.New()
-		h.Write([]byte(vars["dashboard"] + graphUrl.RawQuery))
+		_, _ = h.Write([]byte(vars["dashboard"] + graphUrl.RawQuery))
 
 		cacheFile = filepath.Join(viper.GetString("cache"), fmt.Sprintf("%x", h.Sum(nil)))
 		ttl := getInt(dashboard.Ttl, "ttl")
@@ -149,7 +150,7 @@ func graphHandler(w http.ResponseWriter, r *http.Request) {
 
 				// write cached version back and finish
 				w.WriteHeader(http.StatusOK)
-				io.Copy(w, f)
+				_, _ = io.Copy(w, f)
 
 				return nil
 			}(); err == nil {
@@ -257,7 +258,7 @@ func graphHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// last resort is writing response to client only
-	io.Copy(w, resp.Body)
+	_, _ = io.Copy(w, resp.Body)
 }
 
 func parseOptions(opts string) (map[string]string, error) {

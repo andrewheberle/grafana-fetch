@@ -32,6 +32,10 @@ func init() {
 
 func initConfig() {
 	// Do viper init
+	viper.SetEnvPrefix("gf_fetch")
+	viper.AutomaticEnv()
+
+	// Load config if provided
 	if viper.IsSet("config") {
 		viper.SetConfigFile(viper.GetString("config"))
 	} else {
@@ -44,9 +48,6 @@ func initConfig() {
 		viper.SetConfigType("yaml")
 		viper.SetConfigName("grafana-fetch")
 	}
-
-	viper.SetEnvPrefix("gf_fetch")
-	viper.AutomaticEnv()
 
 	if err := viper.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
