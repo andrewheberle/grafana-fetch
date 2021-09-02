@@ -50,14 +50,21 @@ func initConfig() {
 		viper.SetConfigName("grafana-fetch")
 	}
 
+	// load config
 	if err := viper.ReadInConfig(); err != nil {
+		// error here is always fatal if config was provided
+		if viper.IsSet("config") {
+			log.Fatal().Err(err).Send()
+		}
+
+		// otherwise if default config was not found only fail if config was invalid
 		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
 			log.Warn().Err(err).Msg("no config file loaded")
 		} else {
 			log.Fatal().Err(err).Send()
 		}
+	} else {
+		// watch for config changes
+		viper.WatchConfig()
 	}
-
-	// watch for config changes
-	viper.WatchConfig()
 }
