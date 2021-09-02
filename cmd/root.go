@@ -25,6 +25,7 @@ func init() {
 	// set up flags
 	rootCmd.PersistentFlags().String("config", "", "config file (default is $HOME/grafana-fetch.yaml)")
 	rootCmd.PersistentFlags().BoolP("insecure", "k", false, "allow insecure SSL connections")
+	rootCmd.PersistentFlags().String("cafile", "", "CA file")
 
 	// bind flags to viper
 	viper.BindPFlags(rootCmd.PersistentFlags())

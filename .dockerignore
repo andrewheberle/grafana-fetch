@@ -1,6 +1,7 @@
 .cache/
 .git/
 .gitignore
+ca.pem
 config.yml
 Dockerfile
 grafana-fetch

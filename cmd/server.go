@@ -3,8 +3,10 @@ package cmd
 import (
 	"crypto/sha256"
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
@@ -38,6 +40,7 @@ var (
 	}
 
 	errorInvalidOptions = fmt.Errorf("invalid options")
+	certPool            *x509.CertPool
 )
 
 func init() {
@@ -58,6 +61,32 @@ func runServer() {
 	// validate provided url
 	if _, err := url.Parse(viper.GetString("url")); err != nil {
 		log.Fatal().Err(err).Send()
+	}
+
+	// handle if user provided CA file
+	if viper.IsSet("cafile") {
+		// attempt to load system cert pool initially
+		pool, err := x509.SystemCertPool()
+		if err != nil {
+			// if this fails start with an empty certpool
+			pool = x509.NewCertPool()
+		}
+
+		// attempt to load provided ca file
+		pem, err := ioutil.ReadFile(viper.GetString("cafile"))
+		if err != nil {
+			log.Fatal().Err(err).Msg("could not load CA file")
+		}
+
+		// add pem file to cert pool
+		if ok := pool.AppendCertsFromPEM(pem); !ok {
+			log.Warn().Msg("problem adding CA file to certificate pool")
+		}
+
+		// use resulting certificate pool
+		certPool = pool
+	} else {
+		certPool = nil
 	}
 
 	r := mux.NewRouter()
@@ -177,8 +206,10 @@ func graphHandler(w http.ResponseWriter, r *http.Request) {
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: viper.GetBool("insecure"),
+			RootCAs:            certPool,
 		},
 	}
+
 	client := &http.Client{
 		Transport: tr,
 		Timeout:   time.Second * 30,
