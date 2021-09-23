@@ -52,9 +52,9 @@ func init() {
 	serverCmd.Flags().String("cache", "", "cache directory")
 
 	// bind flags to viper
-	viper.BindPFlag("listen", serverCmd.Flags().Lookup("listen"))
-	viper.BindPFlag("url", serverCmd.Flags().Lookup("url"))
-	viper.BindPFlag("cache", serverCmd.Flags().Lookup("cache"))
+	_ = viper.BindPFlag("listen", serverCmd.Flags().Lookup("listen"))
+	_ = viper.BindPFlag("url", serverCmd.Flags().Lookup("url"))
+	_ = viper.BindPFlag("cache", serverCmd.Flags().Lookup("cache"))
 }
 
 func runServer() {
@@ -92,6 +92,7 @@ func runServer() {
 	r := mux.NewRouter()
 	r.HandleFunc("/{dashboard}/{panel}/{from}/{to}/", graphHandler)
 	r.HandleFunc("/{dashboard}/{panel}/{options}/{from}/{to}/", graphHandler)
+	r.HandleFunc("/", catchAll)
 
 	srv := http.Server{
 		Addr:         viper.GetString("listen"),
@@ -109,6 +110,22 @@ func runServer() {
 	}
 }
 
+func catchAll(w http.ResponseWriter, r *http.Request) {
+	id := uuid.NewV4()
+
+	log.Info().
+		Str("uuid", id.String()).
+		Str("method", r.Method).
+		Str("path", r.URL.Path).
+		Str("query", r.URL.RawQuery).
+		Str("remote", r.RemoteAddr).
+		Int("status", http.StatusNotFound).
+		Send()
+
+	w.WriteHeader(http.StatusNotFound)
+	fmt.Fprintf(w, "404 Not Found")
+}
+
 func graphHandler(w http.ResponseWriter, r *http.Request) {
 	var dashboard Dashboard
 	var cacheFile string
@@ -124,6 +141,7 @@ func graphHandler(w http.ResponseWriter, r *http.Request) {
 		Str("method", r.Method).
 		Str("path", r.URL.Path).
 		Str("query", r.URL.RawQuery).
+		Str("remote", r.RemoteAddr).
 		Logger()
 
 	if _, ok := vars["options"]; ok {
@@ -145,14 +163,14 @@ func graphHandler(w http.ResponseWriter, r *http.Request) {
 	if !dashboards.IsSet(vars["dashboard"]) {
 		w.WriteHeader(http.StatusNotFound)
 		fmt.Fprintf(w, "404 Not Found")
-		logger.Info().Str("dashboard", vars["dashboard"]).Msg("not found")
+		logger.Info().Str("dashboard", vars["dashboard"]).Int("status", http.StatusNotFound).Msg("not found")
 		return
 	}
 
 	if err := dashboards.UnmarshalKey(vars["dashboard"], &dashboard); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, "500 Internal Server Error")
-		logger.Info().Str("dashboard", vars["dashboard"]).Msg("invalid config")
+		logger.Info().Str("dashboard", vars["dashboard"]).Int("status", http.StatusInternalServerError).Msg("invalid config")
 		return
 	}
 
@@ -221,6 +239,7 @@ func graphHandler(w http.ResponseWriter, r *http.Request) {
 		logger.Info().
 			Str("dashboard", vars["dashboard"]).
 			Str("url", graphUrl.String()).
+			Int("status", http.StatusInternalServerError).
 			Msg("problem fetching graph")
 		return
 	}
@@ -241,6 +260,7 @@ func graphHandler(w http.ResponseWriter, r *http.Request) {
 		logger.Info().
 			Str("dashboard", vars["dashboard"]).
 			Str("url", graphUrl.String()).
+			Int("status", http.StatusInternalServerError).
 			Msg("problem fetching graph")
 		return
 	}

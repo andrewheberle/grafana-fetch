@@ -28,7 +28,7 @@ func init() {
 	rootCmd.PersistentFlags().String("cafile", "", "CA file")
 
 	// bind flags to viper
-	viper.BindPFlags(rootCmd.PersistentFlags())
+	_ = viper.BindPFlags(rootCmd.PersistentFlags())
 }
 
 func initConfig() {
