@@ -204,6 +204,10 @@ func graphHandler(w http.ResponseWriter, r *http.Request) {
 				}
 				defer f.Close()
 
+				// build cache-control header
+				cachecontrol := fmt.Sprintf("public, max-age=%0.0f, immutable", ((time.Second * time.Duration(ttl)) - time.Since(info.ModTime())).Seconds())
+				w.Header().Add("Cache-Control", cachecontrol)
+
 				// write cached version back and finish
 				w.WriteHeader(http.StatusOK)
 				_, _ = io.Copy(w, f)
@@ -284,14 +288,20 @@ func graphHandler(w http.ResponseWriter, r *http.Request) {
 		Str("content-type", resp.Header.Get("Content-Type")).
 		Msg("request complete")
 
-	// return same as our request
+	// if request was ok then add cache control header
+	if resp.StatusCode == http.StatusOK {
+		cachecontrol := fmt.Sprintf("public, max-age=%d, immutable", getInt(dashboard.Ttl, "ttl"))
+		w.Header().Add("Cache-Control", cachecontrol)
+	}
+
+	// return same status as our request
 	w.WriteHeader(resp.StatusCode)
 	if contentType := resp.Header.Get("Content-Type"); contentType != "" {
 		w.Header().Set("Content-Type", resp.Header.Get("Content-Type"))
 	}
 
 	if resp.StatusCode == http.StatusOK && cacheFile != "" {
-		// attempt to open cahe file for writing
+		// attempt to open cache file for writing
 		if name, err := func() (string, error) {
 			tmp, err := os.CreateTemp(viper.GetString("cache"), ".cache-*")
 			if err != nil {
