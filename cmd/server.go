@@ -92,7 +92,7 @@ func runServer() {
 	r := mux.NewRouter()
 	r.HandleFunc("/{dashboard}/{panel}/{from}/{to}/", graphHandler)
 	r.HandleFunc("/{dashboard}/{panel}/{options}/{from}/{to}/", graphHandler)
-	r.HandleFunc("/", catchAll)
+	r.PathPrefix("/").HandlerFunc(catchAll)
 
 	srv := http.Server{
 		Addr:         viper.GetString("listen"),
@@ -123,7 +123,7 @@ func catchAll(w http.ResponseWriter, r *http.Request) {
 		Send()
 
 	w.WriteHeader(http.StatusNotFound)
-	fmt.Fprintf(w, "404 Not Found")
+	fmt.Fprintf(w, "404 - Not Found")
 }
 
 func graphHandler(w http.ResponseWriter, r *http.Request) {
@@ -154,7 +154,10 @@ func graphHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		fmt.Fprintf(w, "400 Bad Request")
-		logger.Warn().Err(err).Str("options", optString).Msg("invalid options")
+		logger.Warn().
+			Err(err).
+			Str("options", optString).
+			Msg("invalid options")
 		return
 	}
 
@@ -163,14 +166,20 @@ func graphHandler(w http.ResponseWriter, r *http.Request) {
 	if !dashboards.IsSet(vars["dashboard"]) {
 		w.WriteHeader(http.StatusNotFound)
 		fmt.Fprintf(w, "404 Not Found")
-		logger.Info().Str("dashboard", vars["dashboard"]).Int("status", http.StatusNotFound).Msg("not found")
+		logger.Info().
+			Str("dashboard", vars["dashboard"]).
+			Int("status", http.StatusNotFound).
+			Msg("not found")
 		return
 	}
 
 	if err := dashboards.UnmarshalKey(vars["dashboard"], &dashboard); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, "500 Internal Server Error")
-		logger.Info().Str("dashboard", vars["dashboard"]).Int("status", http.StatusInternalServerError).Msg("invalid config")
+		logger.Info().
+			Str("dashboard", vars["dashboard"]).
+			Int("status", http.StatusInternalServerError).
+			Msg("invalid config")
 		return
 	}
 
@@ -205,12 +214,16 @@ func graphHandler(w http.ResponseWriter, r *http.Request) {
 				logger.Info().
 					Str("cachefile", cacheFile).
 					Float64("age", time.Since(info.ModTime()).Seconds()).
-					Float64("ttl", (time.Second * time.Duration(ttl)).Seconds()).
+					Float64("ttl", (time.Second*time.Duration(ttl)).Seconds()).
+					Int("status", http.StatusOK).
 					Msg("returned cached response")
 				return
 			} else {
 				// an error is logged but not fatal
-				logger.Info().Str("cachefile", cacheFile).Err(err).Msg("error returning cached response")
+				logger.Info().
+					Str("cachefile", cacheFile).
+					Err(err).
+					Msg("error returning cached response")
 			}
 		} else {
 			logger.Info().
