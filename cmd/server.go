@@ -6,7 +6,7 @@ import (
 	"crypto/x509"
 	"fmt"
 	"io"
-	"io/ioutil"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/rs/zerolog/log"
 	uuid "github.com/satori/go.uuid"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -60,7 +59,8 @@ func init() {
 func runServer() {
 	// validate provided url
 	if _, err := url.Parse(viper.GetString("url")); err != nil {
-		log.Fatal().Err(err).Send()
+		slog.Error("invalid URL", "error", err)
+		os.Exit(1)
 	}
 
 	// handle if user provided CA file
@@ -73,14 +73,15 @@ func runServer() {
 		}
 
 		// attempt to load provided ca file
-		pem, err := ioutil.ReadFile(viper.GetString("cafile"))
+		pem, err := os.ReadFile(viper.GetString("cafile"))
 		if err != nil {
-			log.Fatal().Err(err).Msg("could not load CA file")
+			slog.Error("could not load CA file", "error", err)
+			os.Exit(1)
 		}
 
 		// add pem file to cert pool
 		if ok := pool.AppendCertsFromPEM(pem); !ok {
-			log.Warn().Msg("problem adding CA file to certificate pool")
+			slog.Warn("problem adding CA file to certificate pool")
 		}
 
 		// use resulting certificate pool
@@ -101,26 +102,25 @@ func runServer() {
 		WriteTimeout: time.Second * 30,
 	}
 
-	log.Info().
-		Str("listen", viper.GetString("listen")).
-		Str("cache", viper.GetString("cache")).
-		Msg("starting server")
+	slog.Info("starting server",
+		"listen", viper.GetString("listen"),
+		"cache", viper.GetString("cache"))
 	if err := srv.ListenAndServe(); err != nil {
-		log.Fatal().Err(err).Send()
+		slog.Error("error from server", "error", err)
+		os.Exit(1)
 	}
 }
 
 func catchAll(w http.ResponseWriter, r *http.Request) {
 	id := uuid.NewV4()
 
-	log.Info().
-		Str("uuid", id.String()).
-		Str("method", r.Method).
-		Str("path", r.URL.Path).
-		Str("query", r.URL.RawQuery).
-		Str("remote", r.RemoteAddr).
-		Int("status", http.StatusNotFound).
-		Send()
+	slog.Info("not found",
+		"uuid", id.String(),
+		"method", r.Method,
+		"path", r.URL.Path,
+		"query", r.URL.RawQuery,
+		"remote", r.RemoteAddr,
+		"status", http.StatusNotFound)
 
 	w.WriteHeader(http.StatusNotFound)
 	fmt.Fprintf(w, "404 - Not Found")
@@ -136,13 +136,11 @@ func graphHandler(w http.ResponseWriter, r *http.Request) {
 	// generate a uuid to track this request
 	id := uuid.NewV4()
 
-	logger := log.With().
-		Str("uuid", id.String()).
-		Str("method", r.Method).
-		Str("path", r.URL.Path).
-		Str("query", r.URL.RawQuery).
-		Str("remote", r.RemoteAddr).
-		Logger()
+	logger := slog.With("uuid", id.String()).
+		With("method", r.Method).
+		With("path", r.URL.Path).
+		With("query", r.URL.RawQuery).
+		With("remote", r.RemoteAddr)
 
 	if _, ok := vars["options"]; ok {
 		optString = vars["options"]
@@ -154,10 +152,7 @@ func graphHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		fmt.Fprintf(w, "400 Bad Request")
-		logger.Warn().
-			Err(err).
-			Str("options", optString).
-			Msg("invalid options")
+		logger.Warn("invalid options", "error", err, "options", optString)
 		return
 	}
 
@@ -166,20 +161,17 @@ func graphHandler(w http.ResponseWriter, r *http.Request) {
 	if !dashboards.IsSet(vars["dashboard"]) {
 		w.WriteHeader(http.StatusNotFound)
 		fmt.Fprintf(w, "404 Not Found")
-		logger.Info().
-			Str("dashboard", vars["dashboard"]).
-			Int("status", http.StatusNotFound).
-			Msg("not found")
+		logger.Error("not found", "dashboard", vars["dashboard"], "status", http.StatusNotFound)
 		return
 	}
 
 	if err := dashboards.UnmarshalKey(vars["dashboard"], &dashboard); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, "500 Internal Server Error")
-		logger.Info().
-			Str("dashboard", vars["dashboard"]).
-			Int("status", http.StatusInternalServerError).
-			Msg("invalid config")
+		logger.Error("invalid config",
+			"error", err,
+			"dashboard", vars["dashboard"],
+			"status", http.StatusInternalServerError)
 		return
 	}
 
@@ -215,25 +207,22 @@ func graphHandler(w http.ResponseWriter, r *http.Request) {
 				return nil
 			}(); err == nil {
 				// no error from closure means cached response was ok so finish here
-				logger.Info().
-					Str("cachefile", cacheFile).
-					Float64("age", time.Since(info.ModTime()).Seconds()).
-					Float64("ttl", (time.Second*time.Duration(ttl)).Seconds()).
-					Int("status", http.StatusOK).
-					Msg("returned cached response")
+				logger.Info("returned cached response",
+					"cachefile", cacheFile,
+					"age", time.Since(info.ModTime()).Seconds(),
+					"ttl", (time.Second * time.Duration(ttl)).Seconds(),
+					"status", http.StatusOK)
 				return
 			} else {
 				// an error is logged but not fatal
-				logger.Info().
-					Str("cachefile", cacheFile).
-					Err(err).
-					Msg("error returning cached response")
+				logger.Error("error returning cached response",
+					"error", err,
+					"cachefile", cacheFile)
 			}
 		} else {
-			logger.Info().
-				Str("cachefile", cacheFile).
-				Err(err).
-				Msg("could not return cached response")
+			logger.Error("could not return cached response",
+				"error", err,
+				"cachefile", cacheFile)
 		}
 	}
 
@@ -253,11 +242,11 @@ func graphHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, "500 Internal Server Error")
-		logger.Info().
-			Str("dashboard", vars["dashboard"]).
-			Str("url", graphUrl.String()).
-			Int("status", http.StatusInternalServerError).
-			Msg("problem fetching graph")
+		logger.Error("problem fetching graph",
+			"error", err,
+			"dashboard", vars["dashboard"],
+			"url", graphUrl.String(),
+			"status", http.StatusInternalServerError)
 		return
 	}
 
@@ -267,26 +256,24 @@ func graphHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// perform request
-	logger.Info().
-		Str("url", graphUrl.String()).
-		Msg("sending request")
+	logger.Info("sending request",
+		"url", graphUrl.String())
 	resp, err := client.Do(req)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, "500 Internal Server Error")
-		logger.Info().
-			Str("dashboard", vars["dashboard"]).
-			Str("url", graphUrl.String()).
-			Int("status", http.StatusInternalServerError).
-			Msg("problem fetching graph")
+		logger.Error("problem fetching graph",
+			"error", err,
+			"dashboard", vars["dashboard"],
+			"url", graphUrl.String(),
+			"status", http.StatusInternalServerError)
 		return
 	}
 	defer resp.Body.Close()
-	logger.Info().
-		Str("url", graphUrl.String()).
-		Int("status", resp.StatusCode).
-		Str("content-type", resp.Header.Get("Content-Type")).
-		Msg("request complete")
+	logger.Info("request complete",
+		"url", graphUrl.String(),
+		"status", resp.StatusCode,
+		"content-type", resp.Header.Get("Content-Type"))
 
 	// if request was ok then add cache control header
 	if resp.StatusCode == http.StatusOK {
@@ -318,7 +305,7 @@ func graphHandler(w http.ResponseWriter, r *http.Request) {
 
 			return tmp.Name(), nil
 		}(); err != nil {
-			logger.Info().Err(err).Msg("error trying to cache file")
+			logger.Error("error trying to cache file", "error", err)
 			// clean up temp file and nothing else as we had a failure
 			if name != "" {
 				os.Remove(name)
@@ -326,7 +313,7 @@ func graphHandler(w http.ResponseWriter, r *http.Request) {
 		} else {
 			// attempt to move temp file into place (failure here is not fata)
 			if err := os.Rename(name, cacheFile); err != nil {
-				logger.Info().Err(err).Msg("error trying to rename temp file")
+				logger.Error("error trying to rename temp file", "error", err)
 			}
 		}
 	}

@@ -3,7 +3,8 @@ package cmd
 import (
 	"os"
 
-	"github.com/rs/zerolog/log"
+	"log/slog"
+
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -42,7 +43,8 @@ func initConfig() {
 	} else {
 		home, err := os.UserHomeDir()
 		if err != nil {
-			log.Fatal().Err(err).Send()
+			slog.Error("could not find users home dir", "error", err)
+			os.Exit(1)
 		}
 
 		viper.AddConfigPath(home)
@@ -54,14 +56,16 @@ func initConfig() {
 	if err := viper.ReadInConfig(); err != nil {
 		// error here is always fatal if config was provided
 		if viper.IsSet("config") {
-			log.Fatal().Err(err).Send()
+			slog.Error("could not load configuration file", "error", err)
+			os.Exit(1)
 		}
 
 		// otherwise if default config was not found only fail if config was invalid
 		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
-			log.Warn().Err(err).Msg("no config file loaded")
+			slog.Warn("no config file loaded", "error", err)
 		} else {
-			log.Fatal().Err(err).Send()
+			slog.Error("could not parse configuration file", "error", err)
+			os.Exit(1)
 		}
 	} else {
 		// watch for config changes

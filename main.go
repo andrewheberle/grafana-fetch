@@ -1,7 +1,7 @@
 package main
 
 import (
-	"gitlab.com/andrewheberle/grafana-fetch/cmd"
+	"github.com/andrewheberle/grafana-fetch/cmd"
 )
 
 func main() {
