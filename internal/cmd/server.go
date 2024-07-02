@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gorilla/mux"
+	"github.com/julienschmidt/httprouter"
 	uuid "github.com/satori/go.uuid"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -90,10 +90,10 @@ func runServer() {
 		certPool = nil
 	}
 
-	r := mux.NewRouter()
-	r.HandleFunc("/{dashboard}/{panel}/{from}/{to}/", graphHandler)
-	r.HandleFunc("/{dashboard}/{panel}/{options}/{from}/{to}/", graphHandler)
-	r.PathPrefix("/").HandlerFunc(catchAll)
+	r := httprouter.New()
+	r.GET("/:dashboard/:panel/:from/:to", graphHandler)
+	r.GET("/:dashboard/:panel/:options/:from/:to", graphHandler)
+	r.GET("/", catchAll)
 
 	srv := http.Server{
 		Addr:         viper.GetString("listen"),
@@ -111,7 +111,7 @@ func runServer() {
 	}
 }
 
-func catchAll(w http.ResponseWriter, r *http.Request) {
+func catchAll(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	id := uuid.NewV4()
 
 	slog.Info("not found",
@@ -126,12 +126,12 @@ func catchAll(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "404 - Not Found")
 }
 
-func graphHandler(w http.ResponseWriter, r *http.Request) {
+func graphHandler(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	var dashboard Dashboard
 	var cacheFile string
 	var optString string
 
-	vars := mux.Vars(r)
+	// vars := mux.Vars(r)
 
 	// generate a uuid to track this request
 	id := uuid.NewV4()
@@ -142,13 +142,8 @@ func graphHandler(w http.ResponseWriter, r *http.Request) {
 		With("query", r.URL.RawQuery).
 		With("remote", r.RemoteAddr)
 
-	if _, ok := vars["options"]; ok {
-		optString = vars["options"]
-	} else {
-		optString = ""
-	}
 	// parse provided options
-	options, err := parseOptions(optString)
+	options, err := parseOptions(ps.ByName("options"))
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		fmt.Fprintf(w, "400 Bad Request")
@@ -157,31 +152,32 @@ func graphHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// check dashboard config exists and is correct type
+	d := ps.ByName("dashboard")
 	dashboards := viper.Sub("dashboards")
-	if !dashboards.IsSet(vars["dashboard"]) {
+	if !dashboards.IsSet(d) {
 		w.WriteHeader(http.StatusNotFound)
 		fmt.Fprintf(w, "404 Not Found")
-		logger.Error("not found", "dashboard", vars["dashboard"], "status", http.StatusNotFound)
+		logger.Error("not found", "dashboard", d, "status", http.StatusNotFound)
 		return
 	}
 
-	if err := dashboards.UnmarshalKey(vars["dashboard"], &dashboard); err != nil {
+	if err := dashboards.UnmarshalKey(d, &dashboard); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, "500 Internal Server Error")
 		logger.Error("invalid config",
 			"error", err,
-			"dashboard", vars["dashboard"],
+			"dashboard", d,
 			"status", http.StatusInternalServerError)
 		return
 	}
 
 	// build url
-	graphUrl := generateUrl(dashboard, r.URL.RawQuery, options, vars)
+	graphUrl := generateUrl(dashboard, r.URL.RawQuery, options, ps)
 
 	// return cached data if still fresh
 	if viper.IsSet("cache") {
 		h := sha256.New()
-		_, _ = h.Write([]byte(vars["dashboard"] + graphUrl.RawQuery))
+		_, _ = h.Write([]byte(d + graphUrl.RawQuery))
 
 		cacheFile = filepath.Join(viper.GetString("cache"), fmt.Sprintf("%x", h.Sum(nil)))
 		ttl := getInt(dashboard.Ttl, "ttl")
@@ -244,7 +240,7 @@ func graphHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "500 Internal Server Error")
 		logger.Error("problem fetching graph",
 			"error", err,
-			"dashboard", vars["dashboard"],
+			"dashboard", d,
 			"url", graphUrl.String(),
 			"status", http.StatusInternalServerError)
 		return
@@ -264,7 +260,7 @@ func graphHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "500 Internal Server Error")
 		logger.Error("problem fetching graph",
 			"error", err,
-			"dashboard", vars["dashboard"],
+			"dashboard", d,
 			"url", graphUrl.String(),
 			"status", http.StatusInternalServerError)
 		return
@@ -386,7 +382,7 @@ func getIntD(val int, key string, def int) int {
 	return def
 }
 
-func generateUrl(dashboard Dashboard, query string, options, vars map[string]string) *url.URL {
+func generateUrl(dashboard Dashboard, query string, options map[string]string, ps httprouter.Params) *url.URL {
 	// build url to fetch graph
 	graphUrl, _ := url.Parse(viper.GetString("url"))
 
@@ -399,9 +395,9 @@ func generateUrl(dashboard Dashboard, query string, options, vars map[string]str
 	queryValues.Add("theme", getStringD(dashboard.Theme, "theme", "light"))
 
 	// add vars to query string
-	queryValues.Add("panelId", vars["panel"])
+	queryValues.Add("panelId", ps.ByName("panel"))
 	for _, key := range []string{"from", "to"} {
-		queryValues.Add(key, vars[key])
+		queryValues.Add(key, ps.ByName(key))
 	}
 
 	// add options to query string
