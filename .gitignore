@@ -1,5 +1,4 @@
 .cache/
 ca.pem
 config.yml
-grafana-fetch
-grafana-fetch.exe
+*.exe

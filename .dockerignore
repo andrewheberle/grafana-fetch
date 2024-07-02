@@ -4,5 +4,4 @@
 ca.pem
 config.yml
 Dockerfile
-grafana-fetch
-grafana-fetch.exe
+*.exe
