@@ -3,7 +3,7 @@ FROM golang:1.22@sha256:3589439790974ec05491b66b656bf1048d0f50dd010a903463e3156b
 COPY . /build/
 RUN cd /build && go build ./cmd/grafana-fetch
 
-FROM gcr.io/distroless/base-debian12:latest@sha256:786007f631d22e8a1a5084c5b177352d9dcac24b1e8c815187750f70b24a9fc6
+FROM gcr.io/distroless/base-debian12:latest@sha256:6ae5fe659f28c6afe9cc2903aebc78a5c6ad3aaa3d9d0369760ac6aaea2529c8
 
 COPY --from=build /build/grafana-fetch /app/grafana-fetch
 
