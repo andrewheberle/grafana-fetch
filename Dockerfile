@@ -1,4 +1,4 @@
-FROM golang:1.22@sha256:3589439790974ec05491b66b656bf1048d0f50dd010a903463e3156ba1fc26de AS build
+FROM golang:1.23@sha256:ad5c126b5cf501a8caef751a243bb717ec204ab1aa56dc41dc11be089fafcb4f AS build
 
 COPY . /build/
 RUN cd /build && go build ./cmd/grafana-fetch
